@@ -1,0 +1,1 @@
+{"name":"chotot-a2ui-demo","private":true,"type":"module","scripts":{"dev":"node server.mjs","test":"node --test test/*.test.mjs"},"dependencies":{"ajv":"^8.17.1"},"devDependencies":{"@playwright/test":"^1.56.0"}}
