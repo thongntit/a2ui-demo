@@ -31,6 +31,42 @@ The **Trace explained** tab walks through the recorded laptop-comparison respons
 
 Browser → local HTTP endpoint → CLIProxyAPI `/v1/chat/completions` with `stream: true` → SSE text deltas → complete A2UI envelopes → validation → NDJSON → progressive catalog renderer.
 
+The following diagram shows the current demo. The backend uses sample inventory; it does not call the Chợ Tốt listing API.
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Client as Client · Browser
+    participant Backend as Backend · Local server
+    participant LLM as LLM · Codex via CLIProxyAPI
+
+    Client->>Backend: Load inventory and component catalog
+    Backend-->>Client: Sample listing records + catalog
+
+    User->>Client: Compare the two cheapest laptops
+    Client->>Backend: Request + current UI state
+    Backend->>LLM: Prompt + catalog + inventory + user request
+
+    loop While LLM generates
+        LLM-->>Backend: Stream text chunks
+        Note over Backend: Assemble a complete A2UI envelope<br/>Validate schema and listing IDs
+        Backend-->>Client: Stream validated envelope
+        Note over Client: Update accumulated state<br/>Render immediately
+    end
+
+    Backend-->>Client: Completion marker
+    Note over Backend,Client: Same HTTP response stays open<br/>until streaming finishes
+
+    User->>Client: Click a filter
+    Client->>Backend: Action + current data model
+    Backend->>LLM: Action + state + available records
+    LLM-->>Backend: Stream new A2UI updates
+    Backend-->>Client: Validate and forward updates
+    Client-->>User: Updated interface
+```
+
+For a real integration, the backend fetches listing records before asking the LLM to describe the results, and makes those records available to the client.
+
 Codex produces one protocol envelope per line. Each envelope is validated against the vendored official v0.9 server schema and the demo catalog before delivery. The server checks inventory IDs and search constraints before rendering listings. The frontend implements a bounded renderer, not the full basic catalog. Custom components: Column, Text, FilterBar, ListingCard, AdDetail, Comparison. The catalog ID is `urn:chotot:a2ui:demo:0.9`.
 
 Rendering starts before inference completes: the agent emits the surface, data model, layout, and individual card updates in separate envelopes. The inspector shows envelope count, time to first envelope, and total duration. JSON is buffered only until a complete line is available, never rendered from partial JSON. Each turn sends the current data model. Errors are surfaced without mocked responses; if a stream fails after valid updates, the partial UI stays visible with an error. A completion marker prevents truncated streams from being reported as successful.
