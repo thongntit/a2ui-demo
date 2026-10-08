@@ -13,7 +13,10 @@ try{
  assert.equal(await page.locator('#status').textContent(),'Updated',await page.locator('#chat').textContent());
  const events=await page.evaluate(()=>window.renderEvents);
  assert.ok(events.some(e=>e.count===1&&e.status.startsWith('Streaming')),'First card must appear while the stream is active');
- assert.equal(await page.locator('.ad-card').count(),2);
+ const state=JSON.parse(await page.locator('#state').textContent());
+ assert.equal(state.dataModel.dataSource.kind,'chotot-live');
+ assert.ok(state.dataModel.ads.length>1);
+ assert.equal(await page.locator('.ad-card').count(),state.dataModel.ads.length);
  console.log(JSON.stringify({timing:await page.locator('#timing').textContent(),progressiveCards:events.filter(e=>e.count&&e.status.startsWith('Streaming')).map(e=>({cards:e.count,status:e.status}))}));
  await page.screenshot({path:'test-results/streaming-desktop.png',fullPage:true});
 }finally{await browser.close();}

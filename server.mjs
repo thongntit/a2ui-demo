@@ -7,7 +7,8 @@ let active=0;
 const server=createServer(async(req,res)=>{
  try{
   const url=new URL(req.url,'http://localhost');
-  if(req.method==='GET'&&url.pathname==='/api/inventory'){res.setHeader('Content-Type','application/json');return res.end(JSON.stringify({inventory,catalog,catalogId}));}
+  if(req.method==='GET'&&url.pathname==='/api/inventory'){res.setHeader('Content-Type','application/json');return res.end(JSON.stringify({inventory:[],catalog,catalogId,source:'chotot-live'}));}
+  if(req.method==='GET'&&url.pathname==='/api/trace-fixtures'){res.setHeader('Content-Type','application/json');return res.end(JSON.stringify({inventory}));}
   if(req.method==='POST'&&url.pathname==='/api/agent'){
    if(req.headers.origin&&!['http://localhost:3000','http://127.0.0.1:3000',`http://localhost:${process.env.PORT||3000}`].includes(req.headers.origin)){res.writeHead(403);return res.end('Invalid origin');}
    let raw='';for await(const chunk of req){raw+=chunk;if(raw.length>32000){res.writeHead(413);return res.end();}}

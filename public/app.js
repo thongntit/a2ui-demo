@@ -13,13 +13,14 @@ $('#slide-prev').onclick=()=>showSlide(slide-1);$('#slide-next').onclick=()=>sho
 document.addEventListener('keydown',e=>{if(e.defaultPrevented||e.ctrlKey||e.metaKey||e.altKey||e.target.closest('input,textarea,select,[contenteditable]'))return;if(e.key.toLowerCase()==='p'){e.preventDefault();presentation(!presenting);}if(e.key==='Escape'&&presenting)presentation(false);if(presenting&&!$('#compare-panel').hidden&&!e.target.closest('[role=tab]')){if(e.key==='ArrowRight'){e.preventDefault();showSlide(slide+1);}if(e.key==='ArrowLeft'){e.preventDefault();showSlide(slide-1);}}});
 document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement&&presenting)presentation(false);});
 document.body.dataset.view='demo';showSlide(0);if(new URLSearchParams(location.search).get('present')==='1')presentation(true);
-const {inventory,catalogId}=await fetch('/api/inventory').then(r=>r.json());
-initWalkthrough(inventory);
+const {catalogId}=await fetch('/api/inventory').then(r=>r.json());
+let inventory=[];
+initWalkthrough((await fetch('/api/trace-fixtures').then(r=>r.json())).inventory);
 let surface=null,busy=false,count=0,revision=0,requestStart=null;
 const componentCache=new Map();let visibleKeys=new Set();
 const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
 const value=v=>v&&typeof v==='object'&&v.path?v.path.split('/').slice(1).reduce((a,k)=>a?.[k],surface.data):v;
-const price=a=>new Intl.NumberFormat('vi-VN').format(a.price)+' đ';
+const price=a=>a.price_string||(a.price>0?new Intl.NumberFormat('vi-VN').format(a.price)+' đ':'Liên hệ');
 function followStream(){
  if(!$('#auto-scroll').checked)return;
  requestAnimationFrame(()=>{
@@ -45,20 +46,22 @@ function apply(m){
  if(m.deleteSurface)surface=null;
  if(m.updateComponents){if(!surface)throw Error('Missing surface');for(const c of m.updateComponents.components)surface.components[c.id]=c;}
  if(m.updateDataModel){if(!surface)throw Error('Missing surface');const {path='/',value:v}=m.updateDataModel;if(path==='/')surface.data=v||{};else {const keys=path.split('/').slice(1).map(k=>k.replaceAll('~1','/').replaceAll('~0','~'));let target=surface.data;for(const k of keys.slice(0,-1))target=target[k]??={};if(v===undefined)delete target[keys.at(-1)];else target[keys.at(-1)]=v;}}
- render();updateState();
+ inventory=surface?.data.ads||[];render();updateState();
 }
 function button(label,fn,cls=''){const b=el('button',label,cls);b.type='button';b.disabled=busy;b.onclick=fn;return b;}
 function action(name,id,context={}){const event={version:'v0.9',action:{name,surfaceId:'marketplace',sourceComponentId:id,timestamp:new Date().toISOString(),context}};updateState();trace(event,'↑ CLIENT');request({event});}
 function card(a,id,detail=false){
- const node=el('article',undefined,'ad-card');const image=el('div',a.emoji,'ad-image');image.style.background=a.color;image.setAttribute('aria-label',a.category+' sample illustration');if(a.contain_videos)image.append(el('small','▶ Video'));node.append(image);
+ const node=el('article',undefined,'ad-card');node.dataset.listId=a.list_id;const image=el('div',undefined,'ad-image');
+ if(a.image){const photo=el('img');photo.src=a.image;photo.alt=a.subject;photo.loading='lazy';image.append(photo);}else image.append(el('span','▧'));
+ if(a.contain_videos)image.append(el('small','▶ Video'));node.append(image);
  const body=el('div',undefined,'ad-body');body.append(el('span',a.account_type==='p'?'Cá nhân':'Bán chuyên','seller-type'),el('h3',a.subject),el('strong',price(a),'price'),el('p','⌖ '+a.area_name+' · '+a.region_name,'location'));
- if(detail)body.append(el('p',a.description),el('p','Người bán: '+a.seller+' · Tin mẫu'));
+ if(detail)body.append(el('p',a.description),el('p','Người bán: '+a.seller+' · Chợ Tốt API'));
  body.append(button(detail?'← Quay lại':'Xem chi tiết',()=>action(detail?'back':'openAd',id,{adId:a.list_id}),'card-action'));node.append(body);return node;
 }
 function component(id,seen=new Set()){
  const c=surface.components[id];
  if(c&&c.component!=='Column'){
-  const signature=JSON.stringify([c,c.component==='Text'?value(c.text):c.component==='FilterBar'?value(c.query):null]);
+  const signature=JSON.stringify([c,c.component==='Text'?value(c.text):c.component==='FilterBar'?value(c.query):inventory.filter(a=>(c.adIds||[c.adId]).includes(a.list_id))]);
   const cached=componentCache.get(id);if(cached?.signature===signature)return cached.node;
   const node=buildComponent(id,seen);node.dataset.componentKey=id+':'+c.component;componentCache.set(id,{signature,node});return node;
  }
@@ -92,7 +95,7 @@ async function request(input){
  try{
   const response=await fetch('/api/agent',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...input,existing:!!surface,metadata:{a2uiClientCapabilities:{'v0.9':{supportedCatalogIds:[catalogId]}},a2uiClientDataModel:{version:'v0.9',surfaces:surface?{marketplace:surface.data}:{}}}})});
   if(!response.ok)throw Error(await response.text());const reader=response.body.getReader(),decoder=new TextDecoder();let pending='';
-  while(true){const {done,value:v}=await reader.read();pending+=decoder.decode(v,{stream:!done});const lines=pending.split('\n');pending=lines.pop();for(const line of lines.filter(Boolean)){const m=JSON.parse(line);if(m.error)throw Error(m.error);if(m.status){if(m.status==='complete')completed=true;continue;}first??=(performance.now()-start)/1000;received++;trace(m);apply(m);$('#status').textContent='Streaming · '+received+' messages';$('#timing').textContent=`First ${first.toFixed(1)}s · elapsed ${((performance.now()-start)/1000).toFixed(1)}s`;}if(done)break;}
+  while(true){const {done,value:v}=await reader.read();pending+=decoder.decode(v,{stream:!done});const lines=pending.split('\n');pending=lines.pop();for(const line of lines.filter(Boolean)){const m=JSON.parse(line);if(m.error)throw Error(m.error);if(m.backend){trace(m,'↔ BACKEND · outside A2UI');$('#status').textContent=m.backend.phase==='request'?'Fetching Chợ Tốt ads…':'Ads received · composing UI…';continue;}if(m.status){if(m.status==='complete')completed=true;if(m.status==='resolving')$('#status').textContent='Resolving search intent…';continue;}first??=(performance.now()-start)/1000;received++;trace(m);apply(m);$('#status').textContent='Streaming · '+received+' messages';$('#timing').textContent=`First ${first.toFixed(1)}s · elapsed ${((performance.now()-start)/1000).toFixed(1)}s`;}if(done)break;}
   if(!completed||pending.trim())throw Error('Stream ended before completion. Partial UI may be visible; try again.');
   if(surface?.data.summary)$('#chat').append(el('p',surface.data.summary,'assistant'));$('#status').textContent='Updated';$('#timing').textContent=`${received} envelopes · first ${(first||0).toFixed(1)}s · total ${((performance.now()-start)/1000).toFixed(1)}s`;
  }catch(e){$('#chat').append(el('p',e.message,'error'));$('.conversation').open=true;$('#status').textContent='Request failed';}
