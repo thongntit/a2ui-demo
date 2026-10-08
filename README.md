@@ -57,7 +57,7 @@ sequenceDiagram
     loop While LLM generates
         LLM-->>Backend: Stream text chunks
         Note over Backend: Assemble a complete A2UI envelope<br/>Validate schema and listing IDs
-        Backend-->>Client: Stream envelope; data model includes ads
+        Backend-->>Client: Stream envelope with ads in the data model
         Note over Client: Update accumulated state<br/>Render immediately
     end
 
